@@ -1,0 +1,24 @@
+# Docker profile - for running in Docker containers
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://review-db:3306/review_db}
+    username: ${SPRING_DATASOURCE_USERNAME:reviewuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:reviewpass}
+  jpa:
+    show-sql: false
+
+movie-service:
+  base-url: ${MOVIE_SERVICE_BASE_URL:http://movie-service:8081}
+
+logging:
+  level:
+    com.bookmyseat.reviewservice: INFO
+    org.springframework.web.client: INFO
+    io.github.resilience4j: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+
+management:
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://zipkin:9411/api/v2/spans}

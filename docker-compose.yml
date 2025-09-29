@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  review-db:
+    image: mysql:8.0
+    container_name: review-mysql
+    environment:
+      MYSQL_DATABASE: review_db
+      MYSQL_USER: reviewuser
+      MYSQL_PASSWORD: reviewpass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3308:3306"
+    volumes:
+      - review-db-data:/var/lib/mysql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - review-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  review-service:
+    build: .
+    container_name: review-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:mysql://review-db:3306/review_db
+      SPRING_DATASOURCE_USERNAME: reviewuser
+      SPRING_DATASOURCE_PASSWORD: reviewpass
+      MOVIE_SERVICE_BASE_URL: http://movie-service:8081
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      review-db:
+        condition: service_healthy
+    networks:
+      - review-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  review-db-data:
+
+networks:
+  review-network:
+    driver: bridge

@@ -1,0 +1,63 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+# Test configuration for Movie Service
+movie-service:
+  base-url: http://localhost:8081
+  timeout: 3000
+
+# Resilience4j configuration for tests
+resilience4j:
+  circuitbreaker:
+    instances:
+      movieService:
+        registerHealthIndicator: false
+        slidingWindowSize: 5
+        minimumNumberOfCalls: 2
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5s
+        recordExceptions:
+          - com.bookmyseat.reviewservice.exception.MovieServiceUnavailableException
+          - org.springframework.web.client.ResourceAccessException
+        ignoreExceptions:
+          - com.bookmyseat.reviewservice.exception.MovieNotFoundException
+
+  retry:
+    instances:
+      movieService:
+        maxAttempts: 3
+        waitDuration: 500ms
+        retryExceptions:
+          - com.bookmyseat.reviewservice.exception.MovieServiceUnavailableException
+          - org.springframework.web.client.ResourceAccessException
+        ignoreExceptions:
+          - com.bookmyseat.reviewservice.exception.MovieNotFoundException
+
+  timelimiter:
+    instances:
+      movieService:
+        timeoutDuration: 3s
+
+# Disable tracing in tests
+management:
+  tracing:
+    enabled: false
+
+logging:
+  level:
+    com.bookmyseat.reviewservice: DEBUG
+    org.springframework.web.client: DEBUG
+    io.github.resilience4j.retry: DEBUG

@@ -1,0 +1,19 @@
+# Development profile - uses local MySQL
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/review_db}
+    username: ${SPRING_DATASOURCE_USERNAME:reviewuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:reviewpass}
+  jpa:
+    show-sql: true
+
+movie-service:
+  base-url: ${MOVIE_SERVICE_BASE_URL:http://localhost:8081}
+
+logging:
+  level:
+    com.bookmyseat.reviewservice: DEBUG
+    org.springframework.web.client: DEBUG
+    io.github.resilience4j: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
