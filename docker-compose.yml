@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   review-db:
     image: mysql:8.0
@@ -10,12 +8,12 @@ services:
       MYSQL_PASSWORD: reviewpass
       MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3308:3306"
+      - "3307:3306"
     volumes:
       - review-db-data:/var/lib/mysql
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     networks:
-      - review-network
+      - bookmyseat-network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
@@ -37,7 +35,7 @@ services:
       review-db:
         condition: service_healthy
     networks:
-      - review-network
+      - bookmyseat-network 
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health"]
       interval: 30s
@@ -49,5 +47,5 @@ volumes:
   review-db-data:
 
 networks:
-  review-network:
-    driver: bridge
+   bookmyseat-network:
+     external: true
