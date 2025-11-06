@@ -1,0 +1,173 @@
+# ========================
+# Namespace (reuse movie)
+# ========================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: movie
+---
+# ========================
+# PersistentVolumeClaim for review-db
+# ========================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: review-db-pvc
+  namespace: movie
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2-immediate
+  resources:
+    requests:
+      storage: 1Gi
+---
+# ========================
+# ConfigMap for MySQL initialization
+# ========================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: review-init-scripts
+  namespace: movie
+data:
+  init-db.sql: |
+    CREATE TABLE reviews (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      movie_id BIGINT NOT NULL,
+      reviewer_name VARCHAR(255) NOT NULL,
+      rating INT NOT NULL CHECK (rating BETWEEN 1 AND 10),
+      comment TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
+    );
+
+    INSERT INTO reviews (movie_id, reviewer_name, rating, comment) VALUES
+    (1, 'John Doe', 9, 'Fantastic movie, very creative concept!'),
+    (2, 'Jane Smith', 10, 'Best superhero movie ever made.'),
+    (3, 'Alice Brown', 8, 'Visually stunning and emotional.'),
+    (4, 'Bob Johnson', 10, 'A cinematic masterpiece.'),
+    (5, 'Chris Evans', 9, 'Brilliant dialogues and storytelling.');
+---
+# ========================
+# MySQL Database (review-db)
+# ========================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-db
+  namespace: movie
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: review-db
+  template:
+    metadata:
+      labels:
+        app: review-db
+    spec:
+      containers:
+        - name: review-db
+          image: mysql:8.0
+          env:
+            - name: MYSQL_DATABASE
+              value: review_db
+            - name: MYSQL_USER
+              value: reviewuser
+            - name: MYSQL_PASSWORD
+              value: reviewpass
+            - name: MYSQL_ROOT_PASSWORD
+              value: rootpass
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: review-db-data
+              mountPath: /var/lib/mysql
+            - name: init-db
+              mountPath: /docker-entrypoint-initdb.d/
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+      volumes:
+        - name: review-db-data
+          persistentVolumeClaim:
+            claimName: review-db-pvc
+        - name: init-db
+          configMap:
+            name: review-init-scripts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-db
+  namespace: movie
+spec:
+  selector:
+    app: review-db
+  ports:
+    - port: 3306
+      targetPort: 3306
+      protocol: TCP
+---
+# ========================
+# Review Service (Spring Boot backend)
+# ========================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-service
+  namespace: movie
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: review-service
+  template:
+    metadata:
+      labels:
+        app: review-service
+    spec:
+      initContainers:
+        - name: wait-for-review-db
+          image: mysql:8.0
+          command:
+            ["sh", "-c", "until mysql -h review-db -u reviewuser -previewpass -e 'SELECT 1' >/dev/null 2>&1; do echo waiting for review-db; sleep 5; done"]
+      containers:
+        - name: review-service
+          image: 543816070942.dkr.ecr.us-east-1.amazonaws.com/reviewapp-backend:1
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: docker
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://review-db:3306/review_db
+            - name: SPRING_DATASOURCE_USERNAME
+              value: reviewuser
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: reviewpass
+            - name: MOVIE_SERVICE_BASE_URL
+              value: http://movie-service:8081
+            - name: ZIPKIN_ENDPOINT
+              value: http://zipkin:9411/api/v2/spans
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-service
+  namespace: movie
+spec:
+  selector:
+    app: review-service
+  ports:
+    - port: 8082
+      targetPort: 8082
+  type: LoadBalancer
