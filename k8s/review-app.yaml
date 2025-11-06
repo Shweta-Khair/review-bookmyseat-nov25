@@ -1,4 +1,17 @@
 # ========================
+# StorageClass (gp2-immediate)
+# ========================
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2-immediate
+provisioner: kubernetes.io/aws-ebs
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+parameters:
+  type: gp2
+---
+# ========================
 # Namespace (reuse movie)
 # ========================
 apiVersion: v1
@@ -21,9 +34,9 @@ spec:
   resources:
     requests:
       storage: 1Gi
---- 
+---
 # ========================
-# ConfigMap for MySQL initialization (idempotent SQL)
+# ConfigMap for MySQL initialization
 # ========================
 apiVersion: v1
 kind: ConfigMap
@@ -32,7 +45,6 @@ metadata:
   namespace: movie
 data:
   V1__Create_reviews_and_movie_ratings_tables.sql: |
-    -- Create reviews table (idempotent)
     CREATE TABLE IF NOT EXISTS reviews (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         movie_id BIGINT NOT NULL,
@@ -48,7 +60,6 @@ data:
         INDEX idx_user_name (user_name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-    -- Create movie ratings cache table (idempotent)
     CREATE TABLE IF NOT EXISTS movie_ratings (
         movie_id BIGINT PRIMARY KEY,
         average_rating DECIMAL(3,2),
@@ -63,16 +74,14 @@ data:
         INDEX idx_total_reviews (total_reviews)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   V2__Insert_sample_reviews.sql: |
-    -- Insert sample reviews (idempotent inserts recommended for production)
     INSERT INTO reviews (movie_id, user_name, rating, comment, review_date)
     SELECT 1, 'Alice Johnson', 5.0, 'Absolutely mind-blowing!', '2025-09-25 14:30:00'
-    WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE movie_id=1 AND user_name='Alice Johnson' AND review_date='2025-09-25 14:30:00');
-
-    -- (repeat same pattern or convert to single INSERT ... ON DUPLICATE KEY UPDATE if you add a unique key)
-    -- Additional sample inserts omitted for brevity
---- 
+    WHERE NOT EXISTS (
+      SELECT 1 FROM reviews WHERE movie_id=1 AND user_name='Alice Johnson' AND review_date='2025-09-25 14:30:00'
+    );
+---
 # ========================
-# MySQL Database (review-db) Deployment & Service
+# MySQL Database (review-db)
 # ========================
 apiVersion: apps/v1
 kind: Deployment
@@ -140,7 +149,7 @@ spec:
       protocol: TCP
 ---
 # ========================
-# Review Service (Spring Boot backend) Deployment & Service
+# Review Service (Spring Boot backend)
 # ========================
 apiVersion: apps/v1
 kind: Deployment
@@ -164,7 +173,6 @@ spec:
             - sh
             - -c
             - |
-              # wait for the DB to accept connections (uses mysqladmin from mysql image)
               until mysqladmin ping -h review-db -u reviewuser -previewpass >/dev/null 2>&1; do
                 echo "waiting for review-db"
                 sleep 5
