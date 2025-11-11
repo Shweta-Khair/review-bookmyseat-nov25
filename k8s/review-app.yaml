@@ -179,7 +179,7 @@ spec:
               done
       containers:
         - name: review-service
-          image: 543816070942.dkr.ecr.us-east-1.amazonaws.com/bookmyseatreviewservice:1
+          image: 543816070942.dkr.ecr.us-east-1.amazonaws.com/bookmyseat-review-s:1
           ports:
             - containerPort: 8082
           env:
