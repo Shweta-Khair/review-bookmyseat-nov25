@@ -1,155 +1,5 @@
 # ========================
-# StorageClass (gp2-immediate)
-# ========================
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: gp2-immediate
-provisioner: kubernetes.io/aws-ebs
-volumeBindingMode: Immediate
-reclaimPolicy: Delete
-parameters:
-  type: gp2
----
-# ========================
-# Namespace (reuse movie)
-# ========================
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: movie
----
-# ========================
-# PersistentVolumeClaim for review-db
-# ========================
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: review-db-pvc
-  namespace: movie
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: gp2-immediate
-  resources:
-    requests:
-      storage: 1Gi
----
-# ========================
-# ConfigMap for MySQL initialization
-# ========================
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: review-init-scripts
-  namespace: movie
-data:
-  V1__Create_reviews_and_movie_ratings_tables.sql: |
-    CREATE TABLE IF NOT EXISTS reviews (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        movie_id BIGINT NOT NULL,
-        user_name VARCHAR(100) NOT NULL,
-        rating DECIMAL(2,1) NOT NULL CHECK (rating >= 1.0 AND rating <= 5.0),
-        comment TEXT,
-        review_date TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6),
-        created_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6),
-        updated_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-        INDEX idx_movie_id (movie_id),
-        INDEX idx_review_date (review_date),
-        INDEX idx_rating (rating),
-        INDEX idx_user_name (user_name)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-    CREATE TABLE IF NOT EXISTS movie_ratings (
-        movie_id BIGINT PRIMARY KEY,
-        average_rating DECIMAL(3,2),
-        total_reviews INT DEFAULT 0,
-        rating_1_count INT DEFAULT 0,
-        rating_2_count INT DEFAULT 0,
-        rating_3_count INT DEFAULT 0,
-        rating_4_count INT DEFAULT 0,
-        rating_5_count INT DEFAULT 0,
-        last_updated TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-        INDEX idx_average_rating (average_rating),
-        INDEX idx_total_reviews (total_reviews)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  V2__Insert_sample_reviews.sql: |
-    INSERT INTO reviews (movie_id, user_name, rating, comment, review_date)
-    SELECT 1, 'Alice Johnson', 5.0, 'Absolutely mind-blowing!', '2025-09-25 14:30:00'
-    WHERE NOT EXISTS (
-      SELECT 1 FROM reviews WHERE movie_id=1 AND user_name='Alice Johnson' AND review_date='2025-09-25 14:30:00'
-    );
----
-# ========================
-# MySQL Database (review-db)
-# ========================
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: review-db
-  namespace: movie
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: review-db
-  template:
-    metadata:
-      labels:
-        app: review-db
-    spec:
-      containers:
-        - name: review-db
-          image: mysql:8.0
-          env:
-            - name: MYSQL_DATABASE
-              value: review_db
-            - name: MYSQL_USER
-              value: reviewuser
-            - name: MYSQL_PASSWORD
-              value: reviewpass
-            - name: MYSQL_ROOT_PASSWORD
-              value: rootpass
-          ports:
-            - containerPort: 3306
-          volumeMounts:
-            - name: review-db-data
-              mountPath: /var/lib/mysql
-            - name: init-db
-              mountPath: /docker-entrypoint-initdb.d
-          livenessProbe:
-            exec:
-              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-prootpass"]
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          readinessProbe:
-            exec:
-              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-prootpass"]
-            initialDelaySeconds: 20
-            periodSeconds: 10
-      volumes:
-        - name: review-db-data
-          persistentVolumeClaim:
-            claimName: review-db-pvc
-        - name: init-db
-          configMap:
-            name: review-init-scripts
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: review-db
-  namespace: movie
-spec:
-  selector:
-    app: review-db
-  ports:
-    - port: 3306
-      targetPort: 3306
-      protocol: TCP
----
-# ========================
-# Review Service (Spring Boot backend)
+# Review Service (Spring Boot backend) — Zipkin Disabled
 # ========================
 apiVersion: apps/v1
 kind: Deployment
@@ -193,8 +43,13 @@ spec:
               value: reviewpass
             - name: MOVIE_SERVICE_BASE_URL
               value: http://movie-service.movie.svc.cluster.local:8081/api/v1/movies
+            # Disable Zipkin tracing
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "false"
+            - name: MANAGEMENT_OTLP_TRACING_ENDPOINT
+              value: ""
             - name: ZIPKIN_ENDPOINT
-              value: http://zipkin:9411/api/v2/spans
+              value: ""
           readinessProbe:
             httpGet:
               path: /actuator/health
