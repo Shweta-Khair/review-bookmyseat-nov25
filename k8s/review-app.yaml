@@ -192,7 +192,7 @@ spec:
             - name: SPRING_DATASOURCE_PASSWORD
               value: reviewpass
             - name: MOVIE_SERVICE_BASE_URL
-              value: http://movie-service.movie.svc.cluster.local:8081/api/v1/movies
+              value: http://movie-service.movie.svc.cluster.local:8081
             - name: ZIPKIN_ENDPOINT
               value: http://zipkin:9411/api/v2/spans
           readinessProbe:
