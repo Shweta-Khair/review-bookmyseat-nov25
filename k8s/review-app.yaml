@@ -36,51 +36,6 @@ spec:
       storage: 1Gi
 ---
 # ========================
-# ConfigMap for MySQL initialization
-# ========================
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: review-init-scripts
-  namespace: movie
-data:
-  V1__Create_reviews_and_movie_ratings_tables.sql: |
-    CREATE TABLE IF NOT EXISTS reviews (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        movie_id BIGINT NOT NULL,
-        user_name VARCHAR(100) NOT NULL,
-        rating DECIMAL(2,1) NOT NULL CHECK (rating >= 1.0 AND rating <= 5.0),
-        comment TEXT,
-        review_date TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6),
-        created_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6),
-        updated_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-        INDEX idx_movie_id (movie_id),
-        INDEX idx_review_date (review_date),
-        INDEX idx_rating (rating),
-        INDEX idx_user_name (user_name)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-    CREATE TABLE IF NOT EXISTS movie_ratings (
-        movie_id BIGINT PRIMARY KEY,
-        average_rating DECIMAL(3,2),
-        total_reviews INT DEFAULT 0,
-        rating_1_count INT DEFAULT 0,
-        rating_2_count INT DEFAULT 0,
-        rating_3_count INT DEFAULT 0,
-        rating_4_count INT DEFAULT 0,
-        rating_5_count INT DEFAULT 0,
-        last_updated TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-        INDEX idx_average_rating (average_rating),
-        INDEX idx_total_reviews (total_reviews)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  V2__Insert_sample_reviews.sql: |
-    INSERT INTO reviews (movie_id, user_name, rating, comment, review_date)
-    SELECT 1, 'Alice Johnson', 5.0, 'Absolutely mind-blowing!', '2025-09-25 14:30:00'
-    WHERE NOT EXISTS (
-      SELECT 1 FROM reviews WHERE movie_id=1 AND user_name='Alice Johnson' AND review_date='2025-09-25 14:30:00'
-    );
----
-# ========================
 # MySQL Database (review-db)
 # ========================
 apiVersion: apps/v1
@@ -98,6 +53,16 @@ spec:
       labels:
         app: review-db
     spec:
+      initContainers:
+        - name: copy-sql-files
+          image: busybox:1.36
+          command: ['sh', '-c', 'cp /sql-files/*.sql /shared-init/ && ls -la /shared-init/']
+          volumeMounts:
+            - name: sql-files
+              mountPath: /sql-files
+              readOnly: true
+            - name: init-db
+              mountPath: /shared-init
       containers:
         - name: review-db
           image: mysql:8.0
@@ -132,8 +97,15 @@ spec:
           persistentVolumeClaim:
             claimName: review-db-pvc
         - name: init-db
-          configMap:
-            name: review-init-scripts
+          emptyDir: {}
+        - name: sql-files
+          hostPath:
+            # Update this path to match your actual SQL files location
+            # For Windows: Use forward slashes or the Windows path format
+            # Example: path: "D:/BookMyseat-application-shweta/review-bookmyseat-nov25/src/main/resources/db/migration"
+            # For Linux: path: "/path/to/review-bookmyseat-nov25/src/main/resources/db/migration"
+            path: /path/to/review-bookmyseat-nov25/src/main/resources/db/migration
+            type: Directory
 ---
 apiVersion: v1
 kind: Service
@@ -192,7 +164,7 @@ spec:
             - name: SPRING_DATASOURCE_PASSWORD
               value: reviewpass
             - name: MOVIE_SERVICE_BASE_URL
-              value: http://movie-service.movie.svc.cluster.local:8081
+              value: http://movie-service.movie.svc.cluster.local:8081/api/v1/movies
             - name: ZIPKIN_ENDPOINT
               value: http://zipkin:9411/api/v2/spans
           readinessProbe:
@@ -268,4 +240,3 @@ spec:
 #     - port: 9411
 #       targetPort: 9411
 #   type: ClusterIP
-
